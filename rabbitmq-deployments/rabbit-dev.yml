@@ -1,0 +1,113 @@
+---
+    kind: Deployment
+    apiVersion: apps/v1
+    metadata:
+      name: rabbitmq
+      namespace: dev
+      labels:
+        animal: rabbit
+        part: mq
+    spec:
+      strategy:
+        type: RollingUpdate
+        rollingUpdate:
+          maxSurge: 1
+          maxUnavailable: 0
+      replicas: 1
+      revisionHistoryLimit: 1
+      selector:
+        matchLabels:
+          animal: rabbit
+          part: mq
+      template:
+        metadata:
+          namespace: dev
+          labels:
+            animal: rabbit
+            part: mq
+        spec:
+          tolerations:
+            - key: "node.kubernetes.io/unreachable"
+              operator: "Exists"
+              effect: "NoExecute"
+              tolerationSeconds: 10
+            - key: "node.kubernetes.io/not-ready"
+              operator: "Exists"
+              effect: "NoExecute"
+              tolerationSeconds: 10
+          containers:
+            - name: rabbitmq
+              image: registry.citix.me/citix-v2/rabbitmq:latest
+              imagePullPolicy: IfNotPresent
+              ports:
+                - containerPort: 15672
+                  name: http
+                - containerPort: 5672
+                  name: data
+              env:
+                - name: TZ
+                  value: Asia/Almaty
+                - name: RABBITMQ_DEFAULT_USER
+                  value: user
+                - name: RABBITMQ_DEFAULT_PASS
+                  value: 123456qW
+                - name: RABBITMQ_DEFAULT_VHOST
+                  value:
+              volumeMounts:
+                - name: data
+                  mountPath: /var/lib/rabbitmq
+                  readOnly: false
+          volumes:
+            - name: data
+              hostPath:
+                path: /data/rabbitmq
+                type: Directory
+          imagePullSecrets:
+            - name: registry
+             
+---
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: rabbitmq
+      namespace: dev
+    spec:
+      ports:
+        - name: http
+          targetPort: 15672
+          port: 15672
+        - name: data
+          targetPort: 5672
+          port: 5672
+      selector:
+        animal: rabbit
+        part: mq
+
+---
+kind: Ingress
+apiVersion: networking.k8s.io/v1
+metadata:
+  name: rabbitmq
+  namespace: dev
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      rewrite ^(/rabbit)$ $1/ redirect;
+  #  nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: test.citix.me
+    http:
+      paths:
+      - path: /rabbit(/|$)(.*)
+        backend:
+          service:
+            name: rabbitmq
+            port:
+              number: 15672
+        pathType: ImplementationSpecific
+  tls:
+  - hosts:
+    - test.citix.me
+    secretName: cert

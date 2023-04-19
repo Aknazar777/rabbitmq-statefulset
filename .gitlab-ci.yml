@@ -1,0 +1,45 @@
+stages:
+  - build-image-dev
+  - deploy-rabbit-dev
+  - deploy-rabbit-prod
+
+build-image-dev:
+  stage: build-image-dev
+  image: 
+    name: gcr.io/kaniko-project/executor:debug
+    entrypoint: [""]
+  script:
+    - echo $CI_REGISTRY_IMAGE
+    - mkdir -p /kaniko/.docker
+    - echo "{\"auths\":{\"$CI_REGISTRY\":{\"username\":\"$CI_REGISTRY_USER\",\"password\":\"$CI_REGISTRY_PASSWORD\"}}}" > /kaniko/.docker/config.json
+    - /kaniko/executor --context . --dockerfile ./Dockerfile --destination ${CI_REGISTRY_IMAGE}:${TAG} --destination ${CI_REGISTRY_IMAGE}:latest
+  when: manual
+
+Rabbit-dev:
+  stage: deploy-rabbit-dev
+  image: 
+    name: alpine/k8s:1.22.9
+    entrypoint: [""]
+  tags:
+    - local
+  before_script:
+    - mkdir -p ~/.kube/
+    - echo ${KUB_LOCAL} | base64 -d > ~/.kube/config
+    - chmod o-r ~/.kube/config
+    - chmod g-r ~/.kube/config
+  script:
+    - kubectl apply -f rabbit-dev/rabbit.yml --insecure-skip-tls-verify
+    - kubectl apply -f rabbit-dev/rbac.yml --insecure-skip-tls-verify
+  when: manual
+
+Rabbit-prod:
+  stage: deploy-rabbit-prod
+  image: 
+    name: alpine/k8s:1.22.9
+    entrypoint: [""]
+  tags:
+    - local-prod
+  script:
+    - kubectl apply -f rabbit-prod/rabbit.yml --insecure-skip-tls-verify
+    - kubectl apply -f rabbit-prod/rbac.yml --insecure-skip-tls-verify
+  when: manual
